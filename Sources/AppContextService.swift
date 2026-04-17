@@ -38,17 +38,31 @@ Return only two sentences, no labels, no markdown, no extra commentary.
     private let apiKey: String
     private let baseURL: String
     private let customContextPrompt: String
-    private let fallbackTextModel = "meta-llama/llama-4-scout-17b-16e-instruct"
-    private let visionModel = "meta-llama/llama-4-scout-17b-16e-instruct"
+    private let fallbackTextModel: String
+    private let visionModel: String
     private let maxScreenshotDataURILength = 500_000
     private let screenshotCompressionPrimary = 0.5
     private let screenshotMaxDimension: CGFloat = 1024
     private let contextRequestTimeoutSeconds: TimeInterval = 20
 
-    init(apiKey: String, baseURL: String = "https://api.groq.com/openai/v1", customContextPrompt: String = "") {
+    init(
+        apiKey: String,
+        baseURL: String = "https://api.groq.com/openai/v1",
+        customContextPrompt: String = "",
+        textModel: String = "meta-llama/llama-4-scout-17b-16e-instruct",
+        visionModel: String = "meta-llama/llama-4-scout-17b-16e-instruct"
+    ) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.customContextPrompt = customContextPrompt
+        let trimmedTextModel = textModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedVisionModel = visionModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.fallbackTextModel = trimmedTextModel.isEmpty
+            ? "meta-llama/llama-4-scout-17b-16e-instruct"
+            : trimmedTextModel
+        self.visionModel = trimmedVisionModel.isEmpty
+            ? "meta-llama/llama-4-scout-17b-16e-instruct"
+            : trimmedVisionModel
     }
 
     func collectSelectionSnapshot() -> AppSelectionSnapshot {
