@@ -549,12 +549,18 @@ struct GeneralSettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.semibold))
-            TextField(placeholder, text: text)
+            TextField(
+                placeholder,
+                text: Binding(
+                    get: { text.wrappedValue },
+                    set: { newValue in
+                        text.wrappedValue = newValue
+                        onChange(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                )
+            )
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
-                .onChange(of: text.wrappedValue) { newValue in
-                    onChange(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
         }
     }
 
