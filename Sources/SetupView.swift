@@ -28,6 +28,7 @@ struct SetupView: View {
     @State private var micPermissionGranted = false
     @State private var accessibilityGranted = false
     @State private var apiKeyInput: String = ""
+    @State private var apiBaseURLInput: String = ""
     @State private var isValidatingKey = false
     @State private var keyValidationError: String?
     @State private var accessibilityTimer: Timer?
@@ -141,6 +142,7 @@ struct SetupView: View {
         .frame(width: 520, height: 680)
         .onAppear {
             apiKeyInput = appState.apiKey
+            apiBaseURLInput = appState.apiBaseURL
             customVocabularyInput = appState.customVocabulary
             checkMicPermission()
             checkAccessibility()
@@ -318,11 +320,11 @@ struct SetupView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(.blue)
 
-            Text("Groq API Key")
+            Text("API Provider")
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("FreeFlow uses Groq for fast, high-accuracy transcription.")
+            Text("FreeFlow uses Groq by default and can also connect to LiteLLM or another OpenAI-compatible endpoint.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -332,9 +334,9 @@ struct SetupView: View {
                     Text("How to get a free API key:")
                         .font(.subheadline.weight(.semibold))
                     VStack(alignment: .leading, spacing: 2) {
-                        instructionRow(number: "1", text: "Go to [console.groq.com/keys](https://console.groq.com/keys)")
-                        instructionRow(number: "2", text: "Create a free account (if you don't have one)")
-                        instructionRow(number: "3", text: "Click **Create API Key** and copy it")
+                        instructionRow(number: "1", text: "Use Groq by default, or switch to LiteLLM / another OpenAI-compatible provider below")
+                        instructionRow(number: "2", text: "If you're using Groq, get a key from [console.groq.com/keys](https://console.groq.com/keys)")
+                        instructionRow(number: "3", text: "If you're using LiteLLM, enter its base URL and proxy API key")
                     }
                 }
                 .padding(10)
@@ -347,7 +349,7 @@ struct SetupView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("API Key")
                         .font(.headline)
-                    SecureField("Paste your Groq API key", text: $apiKeyInput)
+                    SecureField("Paste your API key", text: $apiKeyInput)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
                         .disabled(isValidatingKey)
@@ -360,6 +362,68 @@ struct SetupView: View {
                             .foregroundStyle(.red)
                             .font(.caption)
                     }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("API Base URL")
+                        .font(.headline)
+                    TextField(AppState.defaultAPIBaseURL, text: $apiBaseURLInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                        .onChange(of: apiBaseURLInput) { newValue in
+                            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                            appState.apiBaseURL = trimmed.isEmpty ? AppState.defaultAPIBaseURL : trimmed
+                        }
+
+                    Text("Keep the default for Groq. Change it here for LiteLLM or another OpenAI-compatible provider.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                DisclosureGroup("Advanced model settings (optional)") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        setupModelField(
+                            title: "Transcription Model",
+                            text: Binding(
+                                get: { appState.transcriptionModel },
+                                set: { appState.transcriptionModel = $0 }
+                            ),
+                            placeholder: AppState.defaultTranscriptionModel
+                        )
+                        setupModelField(
+                            title: "Post-Processing Model",
+                            text: Binding(
+                                get: { appState.postProcessingModel },
+                                set: { appState.postProcessingModel = $0 }
+                            ),
+                            placeholder: AppState.defaultPostProcessingModel
+                        )
+                        setupModelField(
+                            title: "Fallback Post-Processing Model",
+                            text: Binding(
+                                get: { appState.fallbackPostProcessingModel },
+                                set: { appState.fallbackPostProcessingModel = $0 }
+                            ),
+                            placeholder: AppState.defaultFallbackPostProcessingModel
+                        )
+                        setupModelField(
+                            title: "Context Text Model",
+                            text: Binding(
+                                get: { appState.contextTextModel },
+                                set: { appState.contextTextModel = $0 }
+                            ),
+                            placeholder: AppState.defaultContextTextModel
+                        )
+                        setupModelField(
+                            title: "Context Vision Model",
+                            text: Binding(
+                                get: { appState.contextVisionModel },
+                                set: { appState.contextVisionModel = $0 }
+                            ),
+                            placeholder: AppState.defaultContextVisionModel
+                        )
+                    }
+                    .padding(.top, 8)
                 }
             }
 
@@ -959,15 +1023,28 @@ struct SetupView: View {
         }
     }
 
+    private func setupModelField(title: String, text: Binding<String>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+        }
+    }
+
     // MARK: - Actions
 
     func validateAndContinue() {
         let key = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseURL = apiBaseURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedBaseURL = baseURL.isEmpty ? AppState.defaultAPIBaseURL : baseURL
+        appState.apiBaseURL = normalizedBaseURL
         isValidatingKey = true
         keyValidationError = nil
 
         Task {
-            let valid = await TranscriptionService.validateAPIKey(key, baseURL: appState.apiBaseURL)
+            let valid = await TranscriptionService.validateAPIKey(key, baseURL: normalizedBaseURL)
             await MainActor.run {
                 isValidatingKey = false
                 if valid {
@@ -976,7 +1053,7 @@ struct SetupView: View {
                         currentStep = nextStep(currentStep)
                     }
                 } else {
-                    keyValidationError = "Invalid API key. Please check and try again."
+                    keyValidationError = "Invalid API key or unreachable provider. Please check and try again."
                 }
             }
         }
@@ -1120,6 +1197,7 @@ struct SetupView: View {
                             let service = TranscriptionService(
                                 apiKey: appState.apiKey,
                                 baseURL: appState.apiBaseURL,
+                                model: appState.transcriptionModel
                             )
                             let transcript = try await service.transcribe(fileURL: url)
                             await MainActor.run {
