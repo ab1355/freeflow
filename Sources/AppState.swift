@@ -608,8 +608,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
     static let defaultTranscriptionModel = "whisper-large-v3"
     static let defaultPostProcessingModel = "openai/gpt-oss-20b"
     static let defaultFallbackPostProcessingModel = "meta-llama/llama-4-scout-17b-16e-instruct"
-    static let defaultContextTextModel = defaultFallbackPostProcessingModel
-    static let defaultContextVisionModel = defaultFallbackPostProcessingModel
+    static let defaultContextTextModel = "meta-llama/llama-4-scout-17b-16e-instruct"
+    static let defaultContextVisionModel = "meta-llama/llama-4-scout-17b-16e-instruct"
 
     private struct StoredShortcutConfiguration {
         let hold: ShortcutBinding
