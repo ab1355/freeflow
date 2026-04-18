@@ -1985,9 +1985,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     )
                     let pipelineErrorStatus: String
                     if let agentDeliveryError, self.agentDeliveryMode == .sendOnly {
-                        pipelineErrorStatus = "Error: \(error.localizedDescription). Agent error event failed: \(agentDeliveryError)"
+                        pipelineErrorStatus = "Pipeline error: \(error.localizedDescription); Agent delivery also failed: \(agentDeliveryError)"
                     } else {
-                        pipelineErrorStatus = "Error: \(error.localizedDescription)"
+                        pipelineErrorStatus = "Pipeline error: \(error.localizedDescription)"
                     }
                     await MainActor.run {
                         guard self.isTranscribing else { return }

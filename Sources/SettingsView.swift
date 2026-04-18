@@ -520,7 +520,7 @@ struct GeneralSettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                Text("Choose LiteLLM explicitly if your API base URL is proxied through LiteLLM but the URL itself does not mention it.")
+                Text("Choose LiteLLM explicitly if your API Base URL is proxied through LiteLLM but the URL itself does not mention it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

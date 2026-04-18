@@ -173,11 +173,14 @@ struct AgentRuntimeEvent: Codable {
 }
 
 actor AgentRuntimeTransport {
+    private static let agentRequestTimeout: TimeInterval = 10
+    private static let agentResourceTimeout: TimeInterval = 15
+
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 15
+        configuration.timeoutIntervalForRequest = agentRequestTimeout
+        configuration.timeoutIntervalForResource = agentResourceTimeout
         return URLSession(configuration: configuration)
     }()
 

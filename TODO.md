@@ -31,12 +31,12 @@ Skip full Phase 2 implementation for now and move to Phase 3.
 
 ### Agent/runtime integration
 
-- [ ] Add a websocket streaming transport for live transcript and status events
-- [ ] Make the websocket path work cleanly with LiteLLM
-- [ ] Emit structured events for `recording_started`, `partial_transcript`, `final_transcript`, `post_processed_transcript`, and `error`
-- [ ] Add a configurable local websocket endpoint in Settings
-- [ ] Add an option to send transcripts to agents instead of pasting at the cursor
-- [ ] Add a webhook or local HTTP fallback for non-websocket agent consumers
+- [x] Add a websocket streaming transport for live transcript and status events
+- [x] Make the websocket path work cleanly with LiteLLM
+- [x] Emit structured events for `recording_started`, `final_transcript`, `post_processed_transcript`, and `error`
+- [x] Add a configurable local websocket endpoint in Settings
+- [x] Add an option to send transcripts to agents instead of pasting at the cursor
+- [x] Add a webhook or local HTTP fallback for non-websocket agent consumers
 
 ### Streaming and transcription
 
