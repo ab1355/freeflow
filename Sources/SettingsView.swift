@@ -490,7 +490,7 @@ struct GeneralSettingsView: View {
                     appState.apiKey = key
                     keyValidationSuccess = true
                 } else {
-                    keyValidationError = "Invalid API key or API Base URL. Please check both and try again."
+                    keyValidationError = "Invalid API key. Please check the key and try again."
                 }
             }
         }

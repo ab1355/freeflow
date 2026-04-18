@@ -1675,7 +1675,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         case .pasteAndSend:
             return agentDeliveryError == nil ? "Pasted and sent!" : "Pasted. Agent delivery failed."
         case .sendOnly:
-            return agentDeliveryError == nil ? "Sent to agent!" : "Agent delivery failed"
+            return agentDeliveryError == nil ? "Sent to agent!" : "Agent delivery failed."
         }
     }
 
