@@ -166,6 +166,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private let apiKeyStorageKey = "groq_api_key"
     private let apiBaseURLStorageKey = "api_base_url"
     private let agentDeliveryModeStorageKey = "agent_delivery_mode"
+    private let agentProviderKindStorageKey = "agent_provider_kind"
     private let agentWebSocketURLStorageKey = "agent_websocket_url"
     private let agentWebhookURLStorageKey = "agent_webhook_url"
     private let holdShortcutStorageKey = "hold_shortcut"
@@ -213,6 +214,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var agentDeliveryMode: AgentDeliveryMode {
         didSet {
             UserDefaults.standard.set(agentDeliveryMode.rawValue, forKey: agentDeliveryModeStorageKey)
+        }
+    }
+
+    @Published var agentProviderKind: AgentProviderKind {
+        didSet {
+            UserDefaults.standard.set(agentProviderKind.rawValue, forKey: agentProviderKindStorageKey)
         }
     }
 
@@ -406,6 +413,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let agentDeliveryMode = AgentDeliveryMode(
             rawValue: UserDefaults.standard.string(forKey: agentDeliveryModeStorageKey) ?? ""
         ) ?? .pasteOnly
+        let agentProviderKind = AgentProviderKind(
+            rawValue: UserDefaults.standard.string(forKey: agentProviderKindStorageKey) ?? ""
+        ) ?? .automatic
         let agentWebSocketURL = Self.loadStoredTextSetting(account: agentWebSocketURLStorageKey)
         let agentWebhookURL = Self.loadStoredTextSetting(account: agentWebhookURLStorageKey)
         let shortcuts = Self.loadShortcutConfiguration(
@@ -468,6 +478,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.apiKey = apiKey
         self.apiBaseURL = apiBaseURL
         self.agentDeliveryMode = agentDeliveryMode
+        self.agentProviderKind = agentProviderKind
         self.agentWebSocketURL = agentWebSocketURL
         self.agentWebhookURL = agentWebhookURL
         self.holdShortcut = shortcuts.hold
@@ -1299,7 +1310,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let scheduledManualCommandInvocation = pendingManualCommandInvocation
         cancelPendingShortcutStart()
         activeRecordingTriggerMode = triggerMode
-        guard hasAccessibility || !agentDeliveryMode.requiresAccessibilityPermission else {
+        guard agentDeliveryMode.requiresAccessibilityPermission ? hasAccessibility : true else {
             errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
             statusText = "No Accessibility"
             activeRecordingTriggerMode = nil
@@ -1582,6 +1593,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var agentTransportConfiguration: AgentTransportConfiguration {
         AgentTransportConfiguration(
             deliveryMode: agentDeliveryMode,
+            providerKind: agentProviderKind,
             webSocketURL: agentWebSocketURL,
             webhookURL: agentWebhookURL,
             apiBaseURL: apiBaseURL
@@ -1633,7 +1645,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             intent: intent.persistedIntent.rawValue,
             status: eventText(status),
             error: eventText(error),
-            provider: .from(apiBaseURL: configuration.apiBaseURL),
+            provider: .from(apiBaseURL: configuration.apiBaseURL, providerKind: configuration.providerKind),
             app: .init(
                 appName: context.appName,
                 bundleIdentifier: context.bundleIdentifier,
@@ -1971,6 +1983,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         status: "Pipeline error",
                         error: error.localizedDescription
                     )
+                    let pipelineErrorStatus: String
+                    if let agentDeliveryError, self.agentDeliveryMode == .sendOnly {
+                        pipelineErrorStatus = "Error: \(error.localizedDescription). Agent error event failed: \(agentDeliveryError)"
+                    } else {
+                        pipelineErrorStatus = "Error: \(error.localizedDescription)"
+                    }
                     await MainActor.run {
                         guard self.isTranscribing else { return }
                         self.transcriptionTask = nil
@@ -1979,18 +1997,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         self.transcribingAudioFileName = nil
                         self.activeAgentSessionID = nil
                         self.errorMessage = error.localizedDescription
-                        if let agentDeliveryError, self.agentDeliveryMode == .sendOnly {
-                            self.lastPostProcessingStatus = "Error: \(error.localizedDescription) • Agent error event failed: \(agentDeliveryError)"
-                        }
                         self.isTranscribing = false
                         self.statusText = "Error"
                         self.overlayManager.dismiss()
                         self.lastPostProcessedTranscript = ""
                         self.lastRawTranscript = ""
                         self.lastContextSummary = ""
-                        if self.lastPostProcessingStatus.isEmpty {
-                            self.lastPostProcessingStatus = "Error: \(error.localizedDescription)"
-                        }
+                        self.lastPostProcessingStatus = pipelineErrorStatus
                         self.lastPostProcessingPrompt = ""
                         self.lastContextScreenshotDataURL = resolvedContext.screenshotDataURL
                         self.lastContextScreenshotStatus = resolvedContext.screenshotError

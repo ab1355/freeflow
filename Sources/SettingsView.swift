@@ -463,9 +463,7 @@ struct GeneralSettingsView: View {
                     .font(.system(.body, design: .monospaced))
                     .onChange(of: apiBaseURLInput) { newValue in
                         let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            appState.apiBaseURL = trimmed
-                        }
+                        appState.apiBaseURL = trimmed.isEmpty ? "https://api.groq.com/openai/v1" : trimmed
                     }
 
                 Button("Reset to Default") {
@@ -512,6 +510,20 @@ struct GeneralSettingsView: View {
             Text("Send transcripts to an agent runtime over websocket, keep pasting to the cursor, or do both. Send Only mode skips the Accessibility requirement for typing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Provider Metadata")
+                    .font(.caption.weight(.semibold))
+                Picker("Provider Metadata", selection: $appState.agentProviderKind) {
+                    ForEach(AgentProviderKind.allCases) { provider in
+                        Text(provider.title).tag(provider)
+                    }
+                }
+                .pickerStyle(.menu)
+                Text("Choose LiteLLM explicitly if your API base URL is proxied through LiteLLM but the URL itself does not mention it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("WebSocket Endpoint")

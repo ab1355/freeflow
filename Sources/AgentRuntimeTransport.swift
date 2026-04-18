@@ -46,8 +46,49 @@ enum AgentDeliveryMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum AgentProviderKind: String, CaseIterable, Codable, Identifiable {
+    case automatic
+    case groq
+    case litellm
+    case ollama
+    case openAICompatible
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic:
+            return "Automatic"
+        case .groq:
+            return "Groq"
+        case .litellm:
+            return "LiteLLM"
+        case .ollama:
+            return "Ollama"
+        case .openAICompatible:
+            return "OpenAI-Compatible"
+        }
+    }
+
+    var providerName: String {
+        switch self {
+        case .automatic:
+            return "automatic"
+        case .groq:
+            return "groq"
+        case .litellm:
+            return "litellm"
+        case .ollama:
+            return "ollama"
+        case .openAICompatible:
+            return "openai-compatible"
+        }
+    }
+}
+
 struct AgentTransportConfiguration {
     let deliveryMode: AgentDeliveryMode
+    let providerKind: AgentProviderKind
     let webSocketURL: String
     let webhookURL: String
     let apiBaseURL: String
@@ -230,24 +271,33 @@ actor AgentRuntimeTransport {
 }
 
 extension AgentRuntimeEvent.ProviderMetadata {
-    static func from(apiBaseURL: String) -> Self {
+    static func from(apiBaseURL: String, providerKind: AgentProviderKind) -> Self {
         let normalized = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lowercased = normalized.lowercased()
         let provider: String
-        if lowercased.contains("litellm") {
-            provider = "litellm"
-        } else if lowercased.contains("groq") {
-            provider = "groq"
-        } else if lowercased.contains("ollama") {
-            provider = "ollama"
-        } else {
-            provider = "openai-compatible"
+
+        switch providerKind {
+        case .automatic:
+            let components = URLComponents(string: normalized)
+            let host = components?.host?.lowercased() ?? ""
+            let path = components?.path.lowercased() ?? ""
+
+            if host.contains("litellm") || path.contains("litellm") {
+                provider = AgentProviderKind.litellm.providerName
+            } else if host.contains("groq") || path.contains("groq") {
+                provider = AgentProviderKind.groq.providerName
+            } else if host.contains("ollama") || path.contains("ollama") {
+                provider = AgentProviderKind.ollama.providerName
+            } else {
+                provider = AgentProviderKind.openAICompatible.providerName
+            }
+        default:
+            provider = providerKind.providerName
         }
 
         return .init(
             apiBaseURL: normalized,
             provider: provider,
-            isLiteLLM: provider == "litellm"
+            isLiteLLM: provider == AgentProviderKind.litellm.providerName
         )
     }
 }
