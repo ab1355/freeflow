@@ -375,7 +375,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
     @Published var availableMicrophones: [AudioDevice] = []
 
-    private let agentRuntimeTransport = AgentRuntimeTransport()
+    private let agentRuntimeTransport: AgentRuntimeTransport
     let audioRecorder = AudioRecorder()
     let hotkeyManager = HotkeyManager()
     let overlayManager = RecordingOverlayManager()
@@ -473,6 +473,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
+        self.agentRuntimeTransport = AgentRuntimeTransport()
         self.contextService = AppContextService(apiKey: apiKey, baseURL: apiBaseURL, customContextPrompt: customContextPrompt)
         self.hasCompletedSetup = hasCompletedSetup
         self.apiKey = apiKey
@@ -550,7 +551,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
     }
 
-    private static let defaultAPIBaseURL = "https://api.groq.com/openai/v1"
+    static let defaultAPIBaseURL = "https://api.groq.com/openai/v1"
 
     private struct StoredShortcutConfiguration {
         let hold: ShortcutBinding
@@ -1672,7 +1673,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         case .pasteOnly:
             return preserveClipboard ? "Pasted at cursor!" : "Copied to clipboard!"
         case .pasteAndSend:
-            return agentDeliveryError == nil ? "Pasted and sent!" : "Pasted; agent send failed"
+            return agentDeliveryError == nil ? "Pasted and sent!" : "Pasted. Agent delivery failed."
         case .sendOnly:
             return agentDeliveryError == nil ? "Sent to agent!" : "Agent delivery failed"
         }
@@ -1985,7 +1986,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     )
                     let pipelineErrorStatus: String
                     if let agentDeliveryError, self.agentDeliveryMode == .sendOnly {
-                        pipelineErrorStatus = "Pipeline error: \(error.localizedDescription); Agent delivery also failed: \(agentDeliveryError)"
+                        pipelineErrorStatus = "Pipeline error: \(error.localizedDescription)\nAgent delivery also failed: \(agentDeliveryError)"
                     } else {
                         pipelineErrorStatus = "Pipeline error: \(error.localizedDescription)"
                     }

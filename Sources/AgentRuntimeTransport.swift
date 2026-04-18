@@ -179,8 +179,8 @@ actor AgentRuntimeTransport {
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = agentRequestTimeout
-        configuration.timeoutIntervalForResource = agentResourceTimeout
+        configuration.timeoutIntervalForRequest = Self.agentRequestTimeout
+        configuration.timeoutIntervalForResource = Self.agentResourceTimeout
         return URLSession(configuration: configuration)
     }()
 
@@ -283,12 +283,14 @@ extension AgentRuntimeEvent.ProviderMetadata {
             let components = URLComponents(string: normalized)
             let host = components?.host?.lowercased() ?? ""
             let path = components?.path.lowercased() ?? ""
+            let hostParts = host.split(separator: ".").map(String.init)
+            let pathParts = path.split(separator: "/").map(String.init)
 
-            if host.contains("litellm") || path.contains("litellm") {
+            if hostParts.contains(AgentProviderKind.litellm.providerName) || pathParts.contains(AgentProviderKind.litellm.providerName) {
                 provider = AgentProviderKind.litellm.providerName
-            } else if host.contains("groq") || path.contains("groq") {
+            } else if hostParts.contains(AgentProviderKind.groq.providerName) || pathParts.contains(AgentProviderKind.groq.providerName) {
                 provider = AgentProviderKind.groq.providerName
-            } else if host.contains("ollama") || path.contains("ollama") {
+            } else if hostParts.contains(AgentProviderKind.ollama.providerName) || pathParts.contains(AgentProviderKind.ollama.providerName) {
                 provider = AgentProviderKind.ollama.providerName
             } else {
                 provider = AgentProviderKind.openAICompatible.providerName

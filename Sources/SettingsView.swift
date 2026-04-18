@@ -458,17 +458,17 @@ struct GeneralSettingsView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
-                TextField("https://api.groq.com/openai/v1", text: $apiBaseURLInput)
+                TextField(AppState.defaultAPIBaseURL, text: $apiBaseURLInput)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
                     .onChange(of: apiBaseURLInput) { newValue in
                         let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                        appState.apiBaseURL = trimmed.isEmpty ? "https://api.groq.com/openai/v1" : trimmed
+                        appState.apiBaseURL = trimmed.isEmpty ? AppState.defaultAPIBaseURL : trimmed
                     }
 
                 Button("Reset to Default") {
-                    apiBaseURLInput = "https://api.groq.com/openai/v1"
-                    appState.apiBaseURL = "https://api.groq.com/openai/v1"
+                    apiBaseURLInput = AppState.defaultAPIBaseURL
+                    appState.apiBaseURL = AppState.defaultAPIBaseURL
                 }
                 .font(.caption)
             }
@@ -483,7 +483,7 @@ struct GeneralSettingsView: View {
         keyValidationSuccess = false
 
         Task {
-            let valid = await TranscriptionService.validateAPIKey(key, baseURL: baseURL.isEmpty ? "https://api.groq.com/openai/v1" : baseURL)
+            let valid = await TranscriptionService.validateAPIKey(key, baseURL: baseURL.isEmpty ? AppState.defaultAPIBaseURL : baseURL)
             await MainActor.run {
                 isValidatingKey = false
                 if valid {
