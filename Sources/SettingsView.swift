@@ -96,6 +96,8 @@ struct GeneralSettingsView: View {
     @AppStorage("show_menu_bar_icon") private var showMenuBarIcon = true
     @State private var apiKeyInput: String = ""
     @State private var apiBaseURLInput: String = ""
+    @State private var agentWebSocketURLInput: String = ""
+    @State private var agentWebhookURLInput: String = ""
     @State private var isValidatingKey = false
     @State private var keyValidationError: String?
     @State private var keyValidationSuccess = false
@@ -234,6 +236,9 @@ struct GeneralSettingsView: View {
                 SettingsCard("API Key", icon: "key.fill") {
                     apiKeySection
                 }
+                SettingsCard("Agent Output", icon: "bolt.horizontal.circle") {
+                    agentDeliverySection
+                }
                 SettingsCard("Dictation Shortcuts", icon: "keyboard.fill") {
                     hotkeySection
                 }
@@ -261,6 +266,8 @@ struct GeneralSettingsView: View {
         .onAppear {
             apiKeyInput = appState.apiKey
             apiBaseURLInput = appState.apiBaseURL
+            agentWebSocketURLInput = appState.agentWebSocketURL
+            agentWebhookURLInput = appState.agentWebhookURL
             customVocabularyInput = appState.customVocabulary
             checkMicPermission()
             appState.refreshLaunchAtLoginStatus()
@@ -488,6 +495,55 @@ struct GeneralSettingsView: View {
                     keyValidationError = "Invalid API key. Please check and try again."
                 }
             }
+        }
+    }
+
+    // MARK: Agent Delivery
+
+    private var agentDeliverySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Delivery Mode", selection: $appState.agentDeliveryMode) {
+                ForEach(AgentDeliveryMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text("Send transcripts to an agent runtime over websocket, keep pasting to the cursor, or do both. Send Only mode skips the Accessibility requirement for typing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("WebSocket Endpoint")
+                    .font(.caption.weight(.semibold))
+                TextField("ws://127.0.0.1:8787/freeflow", text: $agentWebSocketURLInput)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .onChange(of: agentWebSocketURLInput) { newValue in
+                        appState.agentWebSocketURL = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                Text("Primary live transport for agent events. Use this for local agent runtimes or a LiteLLM websocket bridge.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("HTTP Fallback Endpoint")
+                    .font(.caption.weight(.semibold))
+                TextField("http://127.0.0.1:8787/freeflow", text: $agentWebhookURLInput)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .onChange(of: agentWebhookURLInput) { newValue in
+                        appState.agentWebhookURL = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                Text("Used only when websocket delivery is unavailable.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Every outbound event includes the current API base URL and marks LiteLLM explicitly when your provider URL points at LiteLLM.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

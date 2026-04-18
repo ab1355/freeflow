@@ -77,6 +77,8 @@ Some day!
 
 **Update:** You can now use a custom model with FreeFlow by configuring the LLM API URL in the FreeFlow settings to use Ollama. Thank you @taciturnaxolotl!
 
+**Update:** FreeFlow can also send structured transcript events to local agent runtimes over websocket, with HTTP fallback support. If your LLM provider is routed through LiteLLM, that metadata is included in outbound agent events so downstream consumers can adapt accordingly.
+
 ## License
 
 Licensed under the MIT license.
