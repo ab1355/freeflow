@@ -490,7 +490,7 @@ struct GeneralSettingsView: View {
                     appState.apiKey = key
                     keyValidationSuccess = true
                 } else {
-                    keyValidationError = "Invalid API key. Please check and try again."
+                    keyValidationError = "Invalid API key. Please check the key and API Base URL."
                 }
             }
         }
@@ -553,7 +553,7 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Every outbound event includes the current API base URL and marks LiteLLM explicitly when your provider URL points at LiteLLM.")
+            Text("Every outbound event includes provider metadata. When LiteLLM is selected or detected, events flag that explicitly so downstream consumers can adapt their behavior.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

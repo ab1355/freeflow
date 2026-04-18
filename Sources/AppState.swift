@@ -1679,6 +1679,16 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
     }
 
+    private func pipelineErrorStatus(
+        pipelineError: String,
+        agentDeliveryError: String?
+    ) -> String {
+        guard let agentDeliveryError, agentDeliveryMode == .sendOnly else {
+            return "Pipeline error: \(pipelineError)"
+        }
+        return "Pipeline error: \(pipelineError)\nAgent delivery also failed: \(agentDeliveryError)"
+    }
+
     private func findMatchingMacro(for transcript: String) -> VoiceMacro? {
         let normalizedTranscript = normalize(transcript)
         guard !normalizedTranscript.isEmpty else { return nil }
@@ -1984,12 +1994,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         status: "Pipeline error",
                         error: error.localizedDescription
                     )
-                    let pipelineErrorStatus: String
-                    if let agentDeliveryError, self.agentDeliveryMode == .sendOnly {
-                        pipelineErrorStatus = "Pipeline error: \(error.localizedDescription)\nAgent delivery also failed: \(agentDeliveryError)"
-                    } else {
-                        pipelineErrorStatus = "Pipeline error: \(error.localizedDescription)"
-                    }
+                    let pipelineErrorStatus = self.pipelineErrorStatus(
+                        pipelineError: error.localizedDescription,
+                        agentDeliveryError: agentDeliveryError
+                    )
                     await MainActor.run {
                         guard self.isTranscribing else { return }
                         self.transcriptionTask = nil

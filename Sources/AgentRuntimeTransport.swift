@@ -286,6 +286,8 @@ extension AgentRuntimeEvent.ProviderMetadata {
             let hostParts = host.split(separator: ".").map(String.init)
             let pathParts = path.split(separator: "/").map(String.init)
 
+            // Automatic detection only matches exact host/path components such as
+            // `litellm`, `groq`, or `ollama`. Everything else stays generic.
             if hostParts.contains(AgentProviderKind.litellm.providerName) || pathParts.contains(AgentProviderKind.litellm.providerName) {
                 provider = AgentProviderKind.litellm.providerName
             } else if hostParts.contains(AgentProviderKind.groq.providerName) || pathParts.contains(AgentProviderKind.groq.providerName) {
