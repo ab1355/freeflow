@@ -976,7 +976,7 @@ struct SetupView: View {
                         currentStep = nextStep(currentStep)
                     }
                 } else {
-                    keyValidationError = "Invalid API key. Please check the key and API Base URL."
+                    keyValidationError = "Invalid API key. Please check the key and try again."
                 }
             }
         }

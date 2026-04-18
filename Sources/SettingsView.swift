@@ -490,7 +490,7 @@ struct GeneralSettingsView: View {
                     appState.apiKey = key
                     keyValidationSuccess = true
                 } else {
-                    keyValidationError = "Invalid API key. Please check the key and API Base URL."
+                    keyValidationError = "Invalid API key or API Base URL. Please check both and try again."
                 }
             }
         }
@@ -507,7 +507,7 @@ struct GeneralSettingsView: View {
             }
             .pickerStyle(.segmented)
 
-            Text("Send transcripts to an agent runtime over websocket, keep pasting to the cursor, or do both. Send Only mode skips the Accessibility requirement for typing.")
+            Text("Send transcripts to an agent runtime over WebSocket, keep pasting to the cursor, or do both. Send Only mode skips the Accessibility requirement for typing.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
