@@ -173,6 +173,10 @@ struct APIModelConfiguration {
 final class AppState: ObservableObject, @unchecked Sendable {
     private let apiKeyStorageKey = "groq_api_key"
     private let apiBaseURLStorageKey = "api_base_url"
+    private let agentDeliveryModeStorageKey = "agent_delivery_mode"
+    private let agentProviderKindStorageKey = "agent_provider_kind"
+    private let agentWebSocketURLStorageKey = "agent_websocket_url"
+    private let agentWebhookURLStorageKey = "agent_webhook_url"
     private let transcriptionModelStorageKey = "transcription_model"
     private let postProcessingModelStorageKey = "post_processing_model"
     private let fallbackPostProcessingModelStorageKey = "fallback_post_processing_model"
@@ -269,6 +273,30 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 defaultValue: Self.defaultContextVisionModel
             )
             rebuildContextService()
+        }
+    }
+
+    @Published var agentDeliveryMode: AgentDeliveryMode {
+        didSet {
+            UserDefaults.standard.set(agentDeliveryMode.rawValue, forKey: agentDeliveryModeStorageKey)
+        }
+    }
+
+    @Published var agentProviderKind: AgentProviderKind {
+        didSet {
+            UserDefaults.standard.set(agentProviderKind.rawValue, forKey: agentProviderKindStorageKey)
+        }
+    }
+
+    @Published var agentWebSocketURL: String {
+        didSet {
+            persistOptionalSetting(agentWebSocketURL, account: agentWebSocketURLStorageKey)
+        }
+    }
+
+    @Published var agentWebhookURL: String {
+        didSet {
+            persistOptionalSetting(agentWebhookURL, account: agentWebhookURLStorageKey)
         }
     }
 
@@ -412,6 +440,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
     @Published var availableMicrophones: [AudioDevice] = []
 
+    private let agentRuntimeTransport: AgentRuntimeTransport
     let audioRecorder = AudioRecorder()
     let hotkeyManager = HotkeyManager()
     let overlayManager = RecordingOverlayManager()
@@ -439,12 +468,21 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var pendingOverlayDismissToken: UUID?
     private var shouldMonitorHotkeys = false
     private var isCapturingShortcut = false
+    private var activeAgentSessionID: UUID?
 
     init() {
         UserDefaults.standard.removeObject(forKey: "force_http2_transcription")
         let hasCompletedSetup = UserDefaults.standard.bool(forKey: "hasCompletedSetup")
         let apiKey = Self.loadStoredAPIKey(account: apiKeyStorageKey)
         let apiBaseURL = Self.loadStoredAPIBaseURL(account: "api_base_url")
+        let agentDeliveryMode = AgentDeliveryMode(
+            rawValue: UserDefaults.standard.string(forKey: agentDeliveryModeStorageKey) ?? ""
+        ) ?? .pasteOnly
+        let agentProviderKind = AgentProviderKind(
+            rawValue: UserDefaults.standard.string(forKey: agentProviderKindStorageKey) ?? ""
+        ) ?? .automatic
+        let agentWebSocketURL = Self.loadStoredTextSetting(account: agentWebSocketURLStorageKey)
+        let agentWebhookURL = Self.loadStoredTextSetting(account: agentWebhookURLStorageKey)
         let transcriptionModel = Self.loadStoredModel(
             defaultsKey: transcriptionModelStorageKey,
             defaultValue: Self.defaultTranscriptionModel
@@ -520,6 +558,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
+        self.agentRuntimeTransport = AgentRuntimeTransport()
         self.contextService = AppContextService(
             apiKey: apiKey,
             baseURL: apiBaseURL,
@@ -530,6 +569,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.hasCompletedSetup = hasCompletedSetup
         self.apiKey = apiKey
         self.apiBaseURL = apiBaseURL
+        self.agentDeliveryMode = agentDeliveryMode
+        self.agentProviderKind = agentProviderKind
+        self.agentWebSocketURL = agentWebSocketURL
+        self.agentWebhookURL = agentWebhookURL
         self.transcriptionModel = transcriptionModel
         self.postProcessingModel = postProcessingModel
         self.fallbackPostProcessingModel = fallbackPostProcessingModel
@@ -624,6 +667,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
         return defaultAPIBaseURL
     }
 
+    private static func loadStoredTextSetting(account: String) -> String {
+        AppSettingsStorage.load(account: account) ?? ""
+    }
+
     private static func loadStoredModel(defaultsKey: String, defaultValue: String) -> String {
         let stored = UserDefaults.standard.string(forKey: defaultsKey) ?? defaultValue
         return normalizedModelSetting(stored, defaultValue: defaultValue)
@@ -656,6 +703,15 @@ final class AppState: ObservableObject, @unchecked Sendable {
             AppSettingsStorage.delete(account: apiBaseURLStorageKey)
         } else {
             AppSettingsStorage.save(trimmed, account: apiBaseURLStorageKey)
+        }
+    }
+
+    private func persistOptionalSetting(_ value: String, account: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            AppSettingsStorage.delete(account: account)
+        } else {
+            AppSettingsStorage.save(trimmed, account: account)
         }
     }
 
@@ -727,7 +783,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
             fallbackModel: models.fallbackPostProcessingModel
         )
     }
-
     private func persistShortcut(_ binding: ShortcutBinding, key: String) {
         guard let data = try? JSONEncoder().encode(binding) else { return }
         UserDefaults.standard.set(data, forKey: key)
@@ -1268,6 +1323,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         contextCaptureTask = nil
         capturedContext = nil
         currentSessionIntent = .dictation
+        activeAgentSessionID = nil
         isRecording = false
         errorMessage = nil
         debugStatusMessage = "Cancelled"
@@ -1293,6 +1349,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         shortcutSessionController.reset()
         activeRecordingTriggerMode = nil
         currentSessionIntent = .dictation
+        activeAgentSessionID = nil
         isRecording = false
         isTranscribing = false
         errorMessage = nil
@@ -1425,11 +1482,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let scheduledManualCommandInvocation = pendingManualCommandInvocation
         cancelPendingShortcutStart()
         activeRecordingTriggerMode = triggerMode
-        guard hasAccessibility else {
+        guard agentDeliveryMode.requiresAccessibilityPermission ? hasAccessibility : true else {
             errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
             statusText = "No Accessibility"
             activeRecordingTriggerMode = nil
             currentSessionIntent = .dictation
+            activeAgentSessionID = nil
             shortcutSessionController.reset()
             showAccessibilityAlert()
             return
@@ -1445,9 +1503,21 @@ final class AppState: ObservableObject, @unchecked Sendable {
             manualCommandRequested: manualCommandRequested
         ) else { return }
         currentSessionIntent = resolvedIntent
+        let agentSessionID = UUID()
+        activeAgentSessionID = agentSessionID
         overlayManager.setRecordingTriggerMode(triggerMode, animated: false)
         guard ensureMicrophoneAccess() else { return }
         os_log(.info, log: recordingLog, "mic access check passed: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+        let startContext = eventContext(from: selectionSnapshot)
+        Task { [weak self] in
+            _ = await self?.emitAgentEvent(
+                type: "recording_started",
+                sessionID: agentSessionID,
+                intent: resolvedIntent,
+                context: startContext,
+                status: "Recording started"
+            )
+        }
         beginRecording(triggerMode: triggerMode)
         os_log(.info, log: recordingLog, "startRecording() finished: %.3fms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
     }
@@ -1468,6 +1538,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         self?.statusText = "No Microphone"
                         self?.activeRecordingTriggerMode = nil
                         self?.currentSessionIntent = .dictation
+                        self?.activeAgentSessionID = nil
                         self?.shortcutSessionController.reset()
                         self?.showMicrophonePermissionAlert()
                     }
@@ -1479,6 +1550,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             statusText = "No Microphone"
             activeRecordingTriggerMode = nil
             currentSessionIntent = .dictation
+            activeAgentSessionID = nil
             shortcutSessionController.reset()
             showMicrophonePermissionAlert()
             return false
@@ -1571,6 +1643,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func handleRecordingFailure(_ error: Error) {
+        let agentSessionID = activeAgentSessionID
+        let sessionIntent = currentSessionIntent
+        let failureContext = fallbackContextAtStop()
         cancelRecordingInitializationTimer()
         audioRecorder.onRecordingReady = nil
         audioRecorder.onRecordingFailure = nil
@@ -1592,11 +1667,25 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
         activeRecordingTriggerMode = nil
         currentSessionIntent = .dictation
+        activeAgentSessionID = nil
         shortcutSessionController.reset()
         errorMessage = formattedRecordingStartError(error)
         statusText = "Error"
         overlayManager.dismiss()
         refreshAvailableMicrophonesIfNeeded()
+        if let agentSessionID {
+            Task { [weak self] in
+                guard let self else { return }
+                _ = await self.emitAgentEvent(
+                    type: "error",
+                    sessionID: agentSessionID,
+                    intent: sessionIntent,
+                    context: failureContext,
+                    status: "Failed to start recording",
+                    error: self.formattedRecordingStartError(error)
+                )
+            }
+        }
     }
 
     private func formattedRecordingStartError(_ error: Error) -> String {
@@ -1671,6 +1760,104 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let sound = NSSound(named: name)
         sound?.volume = soundVolume
         sound?.play()
+    }
+
+    private var agentTransportConfiguration: AgentTransportConfiguration {
+        AgentTransportConfiguration(
+            deliveryMode: agentDeliveryMode,
+            providerKind: agentProviderKind,
+            webSocketURL: agentWebSocketURL,
+            webhookURL: agentWebhookURL,
+            apiBaseURL: apiBaseURL
+        )
+    }
+
+    private func eventText(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func eventContext(from snapshot: AppSelectionSnapshot) -> AppContext {
+        AppContext(
+            appName: snapshot.appName,
+            bundleIdentifier: snapshot.bundleIdentifier,
+            windowTitle: snapshot.windowTitle,
+            selectedText: snapshot.selectedText,
+            currentActivity: "",
+            contextPrompt: nil,
+            screenshotDataURL: nil,
+            screenshotMimeType: nil,
+            screenshotError: nil
+        )
+    }
+
+    private func emitAgentEvent(
+        type: String,
+        sessionID: UUID? = nil,
+        intent: SessionIntent,
+        context: AppContext,
+        rawTranscript: String? = nil,
+        processedTranscript: String? = nil,
+        status: String? = nil,
+        error: String? = nil
+    ) async -> String? {
+        let configuration = agentTransportConfiguration
+        guard configuration.deliveryMode.includesAgentDelivery else { return nil }
+        let sessionID = sessionID ?? activeAgentSessionID
+        guard let sessionID else { return nil }
+
+        let event = AgentRuntimeEvent(
+            eventID: UUID(),
+            sessionID: sessionID,
+            type: type,
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            deliveryMode: configuration.deliveryMode.rawValue,
+            intent: intent.persistedIntent.rawValue,
+            status: eventText(status),
+            error: eventText(error),
+            provider: .from(apiBaseURL: configuration.apiBaseURL, providerKind: configuration.providerKind),
+            app: .init(
+                appName: context.appName,
+                bundleIdentifier: context.bundleIdentifier,
+                windowTitle: context.windowTitle,
+                selectedText: eventText(context.selectedText),
+                contextSummary: eventText(context.contextSummary)
+            ),
+            transcript: .init(
+                raw: eventText(rawTranscript),
+                processed: eventText(processedTranscript)
+            )
+        )
+
+        do {
+            try await agentRuntimeTransport.send(event, configuration: configuration)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func completionStatusText(agentDeliveryError: String?) -> String {
+        switch agentDeliveryMode {
+        case .pasteOnly:
+            return preserveClipboard ? "Pasted at cursor!" : "Copied to clipboard!"
+        case .pasteAndSend:
+            return agentDeliveryError == nil ? "Pasted and sent!" : "Pasted. Agent delivery failed."
+        case .sendOnly:
+            return agentDeliveryError == nil ? "Sent to agent!" : "Agent delivery failed."
+        }
+    }
+
+    private func pipelineErrorStatus(
+        pipelineError: String,
+        agentDeliveryError: String?
+    ) -> String {
+        guard let agentDeliveryError, agentDeliveryMode == .sendOnly else {
+            return "Pipeline error: \(pipelineError)"
+        }
+        return "Pipeline error: \(pipelineError)\nAgent delivery also failed: \(agentDeliveryError)"
     }
 
     private func findMatchingMacro(for transcript: String) -> VoiceMacro? {
@@ -1764,6 +1951,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         shortcutSessionController.reset()
         activeRecordingTriggerMode = nil
         let sessionIntent = currentSessionIntent
+        let agentSessionID = activeAgentSessionID
         currentSessionIntent = .dictation
         audioRecorder.onRecordingReady = nil
         audioRecorder.onRecordingFailure = nil
@@ -1790,6 +1978,21 @@ final class AppState: ObservableObject, @unchecked Sendable {
         audioRecorder.stopRecording { [weak self] fileURL in
             guard let self else { return }
             guard let fileURL else {
+                if let agentSessionID {
+                    let fallbackContext = self.fallbackContextAtStop()
+                    Task { [weak self] in
+                        guard let self else { return }
+                        _ = await self.emitAgentEvent(
+                            type: "error",
+                            sessionID: agentSessionID,
+                            intent: sessionIntent,
+                            context: fallbackContext,
+                            status: "Recording finished without audio",
+                            error: "No audio recorded"
+                        )
+                    }
+                }
+                self.activeAgentSessionID = nil
                 self.isTranscribing = false
                 self.audioRecorder.cleanup()
                 self.errorMessage = "No audio recorded"
@@ -1848,6 +2051,27 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         customSystemPrompt: self.customSystemPrompt
                     )
                     try Task.checkCancellation()
+                    let trimmedRawTranscript = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let trimmedFinalTranscript = result.finalTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let processingStatus = result.outcome.statusMessage()
+                    let rawAgentDeliveryError = await self.emitAgentEvent(
+                        type: "final_transcript",
+                        sessionID: agentSessionID,
+                        intent: sessionIntent,
+                        context: appContext,
+                        rawTranscript: trimmedRawTranscript,
+                        status: "Transcription complete"
+                    )
+                    let processedAgentDeliveryError = await self.emitAgentEvent(
+                        type: "post_processed_transcript",
+                        sessionID: agentSessionID,
+                        intent: sessionIntent,
+                        context: appContext,
+                        rawTranscript: trimmedRawTranscript,
+                        processedTranscript: trimmedFinalTranscript,
+                        status: processingStatus
+                    )
+                    let agentDeliveryError = processedAgentDeliveryError ?? rawAgentDeliveryError
 
                     await MainActor.run {
                         guard self.isTranscribing else { return }
@@ -1855,9 +2079,6 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         self.lastContextScreenshotDataURL = appContext.screenshotDataURL
                         self.lastContextScreenshotStatus = appContext.screenshotError
                             ?? "available (\(appContext.screenshotMimeType ?? "image"))"
-                        let trimmedRawTranscript = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let trimmedFinalTranscript = result.finalTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let processingStatus = result.outcome.statusMessage()
                         self.lastPostProcessingPrompt = result.prompt
                         self.lastRawTranscript = trimmedRawTranscript
                         self.lastPostProcessedTranscript = trimmedFinalTranscript
@@ -1875,10 +2096,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         self.transcribingIndicatorTask?.cancel()
                         self.transcribingIndicatorTask = nil
                         self.transcribingAudioFileName = nil
+                        self.activeAgentSessionID = nil
                         self.lastTranscript = trimmedFinalTranscript
                         self.isTranscribing = false
                         self.debugStatusMessage = "Done"
-                        let completionStatusText = self.preserveClipboard ? "Pasted at cursor!" : "Copied to clipboard!"
+                        let completionStatusText = self.completionStatusText(agentDeliveryError: agentDeliveryError)
 
                         let shouldPersistRawDictationFallback: Bool
                         switch result.outcome {
@@ -1901,9 +2123,15 @@ final class AppState: ObservableObject, @unchecked Sendable {
                                 self.overlayManager.dismiss()
                             }
 
-                            let pendingClipboardRestore = self.writeTranscriptToPasteboard(trimmedFinalTranscript)
-                            self.pasteAtCursorWhenShortcutReleased {
-                                self.restoreClipboardIfNeeded(pendingClipboardRestore)
+                            if self.agentDeliveryMode.includesPaste {
+                                let pendingClipboardRestore = self.writeTranscriptToPasteboard(trimmedFinalTranscript)
+                                self.pasteAtCursorWhenShortcutReleased {
+                                    self.restoreClipboardIfNeeded(pendingClipboardRestore)
+                                }
+                            }
+
+                            if let agentDeliveryError, self.agentDeliveryMode.includesAgentDelivery {
+                                self.errorMessage = agentDeliveryError
                             }
                         }
 
@@ -1915,6 +2143,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 } catch is CancellationError {
                     await MainActor.run {
                         self.transcriptionTask = nil
+                        self.activeAgentSessionID = nil
                     }
                 } catch {
                     let resolvedContext: AppContext
@@ -1925,12 +2154,25 @@ final class AppState: ObservableObject, @unchecked Sendable {
                     } else {
                         resolvedContext = self.fallbackContextAtStop()
                     }
+                    let agentDeliveryError = await self.emitAgentEvent(
+                        type: "error",
+                        sessionID: agentSessionID,
+                        intent: sessionIntent,
+                        context: resolvedContext,
+                        status: "Pipeline error",
+                        error: error.localizedDescription
+                    )
+                    let pipelineErrorStatus = self.pipelineErrorStatus(
+                        pipelineError: error.localizedDescription,
+                        agentDeliveryError: agentDeliveryError
+                    )
                     await MainActor.run {
                         guard self.isTranscribing else { return }
                         self.transcriptionTask = nil
                         self.transcribingIndicatorTask?.cancel()
                         self.transcribingIndicatorTask = nil
                         self.transcribingAudioFileName = nil
+                        self.activeAgentSessionID = nil
                         self.errorMessage = error.localizedDescription
                         self.isTranscribing = false
                         self.statusText = "Error"
@@ -1938,7 +2180,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         self.lastPostProcessedTranscript = ""
                         self.lastRawTranscript = ""
                         self.lastContextSummary = ""
-                        self.lastPostProcessingStatus = "Error: \(error.localizedDescription)"
+                        self.lastPostProcessingStatus = pipelineErrorStatus
                         self.lastPostProcessingPrompt = ""
                         self.lastContextScreenshotDataURL = resolvedContext.screenshotDataURL
                         self.lastContextScreenshotStatus = resolvedContext.screenshotError
