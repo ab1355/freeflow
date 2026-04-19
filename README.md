@@ -30,14 +30,15 @@ So over the weekend I vibe-coded my own free version!
 It's called FreeFlow. Here's how it works:
 
 1. Download the app from above or [click here](https://github.com/zachlatta/freeflow/releases/latest/download/FreeFlow.dmg)
-2. Get a free Groq API key from [groq.com](https://groq.com/)
-3. Hold `Fn` to talk, or tap `Command-Fn` to start and stop dictation, and have whatever you say pasted into the current text field
+2. Get a Groq API key from [groq.com](https://groq.com/) or point FreeFlow at LiteLLM / another OpenAI-compatible endpoint in Settings
+3. If your provider uses different model names, update the transcription and LLM model fields in Settings > API
+4. Hold `Fn` to talk, or tap `Command-Fn` to start and stop dictation, and have whatever you say pasted into the current text field
 
 You can also customize both shortcuts. If your toggle shortcut extends your hold shortcut, you can start in hold mode and press the extra modifier keys to latch into tap mode without stopping the recording.
 
 One of the cool features is that it's context aware. If you're replying to an email, it'll read the names of the people you're replying to and make sure to spell their names correctly. Same with if you're dictating into a terminal or another app. This is the same thing as Monologue's "Deep Context" feature.
 
-An added bonus is that there's no FreeFlow server, so no data is stored or retained - making it more privacy friendly than the SaaS apps. The only information that leaves your computer are the API calls to Groq's transcription and LLM API (LLM is for post-processing the transcription to adapt to context).
+An added bonus is that there's no FreeFlow server, so no data is stored or retained - making it more privacy friendly than the SaaS apps. The only information that leaves your computer are the API calls to your configured transcription and LLM provider (LLM is for post-processing the transcription to adapt to context).
 
 If you'd rather keep cleanup more literal and less context-aware, you can paste this simpler prompt into the custom system prompt setting:
 
@@ -75,7 +76,7 @@ If you do that, the total pipeline takes too long for the UX to be good (5-10 se
 
 Some day!
 
-**Update:** You can now use a custom model with FreeFlow by configuring the LLM API URL in the FreeFlow settings to use Ollama. Thank you @taciturnaxolotl!
+**Update:** You can now point FreeFlow at LiteLLM, Ollama, or another OpenAI-compatible endpoint from Settings > API. If your provider expects different model names, update the transcription and post-processing model fields there as well. Thank you @taciturnaxolotl!
 
 **Update:** FreeFlow can also send structured transcript events to local agent runtimes over websocket, with HTTP fallback support. If your LLM provider is routed through LiteLLM, that metadata is included in outbound agent events so downstream consumers can adapt accordingly.
 

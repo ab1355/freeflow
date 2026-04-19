@@ -162,6 +162,14 @@ private enum SessionIntent {
     }
 }
 
+struct APIModelConfiguration {
+    let transcriptionModel: String
+    let postProcessingModel: String
+    let fallbackPostProcessingModel: String
+    let contextTextModel: String
+    let contextVisionModel: String
+}
+
 final class AppState: ObservableObject, @unchecked Sendable {
     private let apiKeyStorageKey = "groq_api_key"
     private let apiBaseURLStorageKey = "api_base_url"
@@ -169,6 +177,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private let agentProviderKindStorageKey = "agent_provider_kind"
     private let agentWebSocketURLStorageKey = "agent_websocket_url"
     private let agentWebhookURLStorageKey = "agent_webhook_url"
+    private let transcriptionModelStorageKey = "transcription_model"
+    private let postProcessingModelStorageKey = "post_processing_model"
+    private let fallbackPostProcessingModelStorageKey = "fallback_post_processing_model"
+    private let contextTextModelStorageKey = "context_text_model"
+    private let contextVisionModelStorageKey = "context_vision_model"
     private let holdShortcutStorageKey = "hold_shortcut"
     private let toggleShortcutStorageKey = "toggle_shortcut"
     private let savedHoldCustomShortcutStorageKey = "saved_hold_custom_shortcut"
@@ -200,14 +213,66 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var apiKey: String {
         didSet {
             persistAPIKey(apiKey)
-            contextService = AppContextService(apiKey: apiKey, baseURL: apiBaseURL, customContextPrompt: customContextPrompt)
+            rebuildContextService()
         }
     }
 
     @Published var apiBaseURL: String {
         didSet {
             persistAPIBaseURL(apiBaseURL)
-            contextService = AppContextService(apiKey: apiKey, baseURL: apiBaseURL, customContextPrompt: customContextPrompt)
+            rebuildContextService()
+        }
+    }
+
+    @Published var transcriptionModel: String {
+        didSet {
+            persistModelSetting(
+                transcriptionModel,
+                defaultsKey: transcriptionModelStorageKey,
+                defaultValue: Self.defaultTranscriptionModel
+            )
+        }
+    }
+
+    @Published var postProcessingModel: String {
+        didSet {
+            persistModelSetting(
+                postProcessingModel,
+                defaultsKey: postProcessingModelStorageKey,
+                defaultValue: Self.defaultPostProcessingModel
+            )
+        }
+    }
+
+    @Published var fallbackPostProcessingModel: String {
+        didSet {
+            persistModelSetting(
+                fallbackPostProcessingModel,
+                defaultsKey: fallbackPostProcessingModelStorageKey,
+                defaultValue: Self.defaultFallbackPostProcessingModel
+            )
+        }
+    }
+
+    @Published var contextTextModel: String {
+        didSet {
+            persistModelSetting(
+                contextTextModel,
+                defaultsKey: contextTextModelStorageKey,
+                defaultValue: Self.defaultContextTextModel
+            )
+            rebuildContextService()
+        }
+    }
+
+    @Published var contextVisionModel: String {
+        didSet {
+            persistModelSetting(
+                contextVisionModel,
+                defaultsKey: contextVisionModelStorageKey,
+                defaultValue: Self.defaultContextVisionModel
+            )
+            rebuildContextService()
         }
     }
 
@@ -294,7 +359,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var customContextPrompt: String {
         didSet {
             UserDefaults.standard.set(customContextPrompt, forKey: customContextPromptStorageKey)
-            contextService = AppContextService(apiKey: apiKey, baseURL: apiBaseURL, customContextPrompt: customContextPrompt)
+            rebuildContextService()
         }
     }
 
@@ -418,6 +483,26 @@ final class AppState: ObservableObject, @unchecked Sendable {
         ) ?? .automatic
         let agentWebSocketURL = Self.loadStoredTextSetting(account: agentWebSocketURLStorageKey)
         let agentWebhookURL = Self.loadStoredTextSetting(account: agentWebhookURLStorageKey)
+        let transcriptionModel = Self.loadStoredModel(
+            defaultsKey: transcriptionModelStorageKey,
+            defaultValue: Self.defaultTranscriptionModel
+        )
+        let postProcessingModel = Self.loadStoredModel(
+            defaultsKey: postProcessingModelStorageKey,
+            defaultValue: Self.defaultPostProcessingModel
+        )
+        let fallbackPostProcessingModel = Self.loadStoredModel(
+            defaultsKey: fallbackPostProcessingModelStorageKey,
+            defaultValue: Self.defaultFallbackPostProcessingModel
+        )
+        let contextTextModel = Self.loadStoredModel(
+            defaultsKey: contextTextModelStorageKey,
+            defaultValue: Self.defaultContextTextModel
+        )
+        let contextVisionModel = Self.loadStoredModel(
+            defaultsKey: contextVisionModelStorageKey,
+            defaultValue: Self.defaultContextVisionModel
+        )
         let shortcuts = Self.loadShortcutConfiguration(
             holdKey: holdShortcutStorageKey,
             toggleKey: toggleShortcutStorageKey
@@ -474,7 +559,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneStorageKey) ?? "default"
 
         self.agentRuntimeTransport = AgentRuntimeTransport()
-        self.contextService = AppContextService(apiKey: apiKey, baseURL: apiBaseURL, customContextPrompt: customContextPrompt)
+        self.contextService = AppContextService(
+            apiKey: apiKey,
+            baseURL: apiBaseURL,
+            customContextPrompt: customContextPrompt,
+            textModel: contextTextModel,
+            visionModel: contextVisionModel
+        )
         self.hasCompletedSetup = hasCompletedSetup
         self.apiKey = apiKey
         self.apiBaseURL = apiBaseURL
@@ -482,6 +573,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.agentProviderKind = agentProviderKind
         self.agentWebSocketURL = agentWebSocketURL
         self.agentWebhookURL = agentWebhookURL
+        self.transcriptionModel = transcriptionModel
+        self.postProcessingModel = postProcessingModel
+        self.fallbackPostProcessingModel = fallbackPostProcessingModel
+        self.contextTextModel = contextTextModel
+        self.contextVisionModel = contextVisionModel
         self.holdShortcut = shortcuts.hold
         self.toggleShortcut = shortcuts.toggle
         self.savedHoldCustomShortcut = savedHoldCustomShortcut
@@ -552,6 +648,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     static let defaultAPIBaseURL = "https://api.groq.com/openai/v1"
+    static let defaultTranscriptionModel = "whisper-large-v3"
+    static let defaultPostProcessingModel = "openai/gpt-oss-20b"
+    static let defaultFallbackPostProcessingModel = "meta-llama/llama-4-scout-17b-16e-instruct"
+    static let defaultContextTextModel = "meta-llama/llama-4-scout-17b-16e-instruct"
+    static let defaultContextVisionModel = "meta-llama/llama-4-scout-17b-16e-instruct"
 
     private struct StoredShortcutConfiguration {
         let hold: ShortcutBinding
@@ -568,6 +669,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     private static func loadStoredTextSetting(account: String) -> String {
         AppSettingsStorage.load(account: account) ?? ""
+    }
+
+    private static func loadStoredModel(defaultsKey: String, defaultValue: String) -> String {
+        let stored = UserDefaults.standard.string(forKey: defaultsKey) ?? defaultValue
+        return normalizedModelSetting(stored, defaultValue: defaultValue)
     }
 
     private static func loadShortcutConfiguration(holdKey: String, toggleKey: String) -> StoredShortcutConfiguration {
@@ -609,6 +715,74 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
     }
 
+    private func persistModelSetting(_ value: String, defaultsKey: String, defaultValue: String) {
+        let normalized = Self.normalizedModelSetting(value, defaultValue: defaultValue)
+        if normalized == defaultValue {
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+        } else {
+            UserDefaults.standard.set(normalized, forKey: defaultsKey)
+        }
+    }
+
+    private static func normalizedModelSetting(_ value: String, defaultValue: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? defaultValue : trimmed
+    }
+
+    private var apiModelConfiguration: APIModelConfiguration {
+        APIModelConfiguration(
+            transcriptionModel: Self.normalizedModelSetting(
+                transcriptionModel,
+                defaultValue: Self.defaultTranscriptionModel
+            ),
+            postProcessingModel: Self.normalizedModelSetting(
+                postProcessingModel,
+                defaultValue: Self.defaultPostProcessingModel
+            ),
+            fallbackPostProcessingModel: Self.normalizedModelSetting(
+                fallbackPostProcessingModel,
+                defaultValue: Self.defaultFallbackPostProcessingModel
+            ),
+            contextTextModel: Self.normalizedModelSetting(
+                contextTextModel,
+                defaultValue: Self.defaultContextTextModel
+            ),
+            contextVisionModel: Self.normalizedModelSetting(
+                contextVisionModel,
+                defaultValue: Self.defaultContextVisionModel
+            )
+        )
+    }
+
+    private func rebuildContextService() {
+        let models = apiModelConfiguration
+        contextService = AppContextService(
+            apiKey: apiKey,
+            baseURL: apiBaseURL,
+            customContextPrompt: customContextPrompt,
+            textModel: models.contextTextModel,
+            visionModel: models.contextVisionModel
+        )
+    }
+
+    private func makeTranscriptionService() -> TranscriptionService {
+        let models = apiModelConfiguration
+        return TranscriptionService(
+            apiKey: apiKey,
+            baseURL: apiBaseURL,
+            model: models.transcriptionModel
+        )
+    }
+
+    private func makePostProcessingService() -> PostProcessingService {
+        let models = apiModelConfiguration
+        return PostProcessingService(
+            apiKey: apiKey,
+            baseURL: apiBaseURL,
+            defaultModel: models.postProcessingModel,
+            fallbackModel: models.fallbackPostProcessingModel
+        )
+    }
     private func persistShortcut(_ binding: ShortcutBinding, key: String) {
         guard let data = try? JSONEncoder().encode(binding) else { return }
         UserDefaults.standard.set(data, forKey: key)
@@ -702,11 +876,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
             screenshotError: nil
         )
 
-        let transcriptionService = TranscriptionService(
-            apiKey: apiKey,
-            baseURL: apiBaseURL
-        )
-        let postProcessingService = PostProcessingService(apiKey: apiKey, baseURL: apiBaseURL)
+        let transcriptionService = makeTranscriptionService()
+        let postProcessingService = makePostProcessingService()
         let capturedCustomVocabulary = customVocabulary
         let capturedCustomSystemPrompt = customSystemPrompt
 
@@ -1850,11 +2021,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 } catch {}
             }
 
-        let transcriptionService = TranscriptionService(
-            apiKey: apiKey,
-            baseURL: apiBaseURL
-        )
-        let postProcessingService = PostProcessingService(apiKey: apiKey, baseURL: apiBaseURL)
+        let transcriptionService = makeTranscriptionService()
+        let postProcessingService = makePostProcessingService()
 
             self.transcriptionTask?.cancel()
             self.transcriptionTask = Task {

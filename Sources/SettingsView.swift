@@ -98,6 +98,11 @@ struct GeneralSettingsView: View {
     @State private var apiBaseURLInput: String = ""
     @State private var agentWebSocketURLInput: String = ""
     @State private var agentWebhookURLInput: String = ""
+    @State private var transcriptionModelInput: String = ""
+    @State private var postProcessingModelInput: String = ""
+    @State private var fallbackPostProcessingModelInput: String = ""
+    @State private var contextTextModelInput: String = ""
+    @State private var contextVisionModelInput: String = ""
     @State private var isValidatingKey = false
     @State private var keyValidationError: String?
     @State private var keyValidationSuccess = false
@@ -268,6 +273,11 @@ struct GeneralSettingsView: View {
             apiBaseURLInput = appState.apiBaseURL
             agentWebSocketURLInput = appState.agentWebSocketURL
             agentWebhookURLInput = appState.agentWebhookURL
+            transcriptionModelInput = appState.transcriptionModel
+            postProcessingModelInput = appState.postProcessingModel
+            fallbackPostProcessingModelInput = appState.fallbackPostProcessingModel
+            contextTextModelInput = appState.contextTextModel
+            contextVisionModelInput = appState.contextVisionModel
             customVocabularyInput = appState.customVocabulary
             checkMicPermission()
             appState.refreshLaunchAtLoginStatus()
@@ -418,12 +428,12 @@ struct GeneralSettingsView: View {
 
     private var apiKeySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("FreeFlow uses Groq's whisper-large-v3 model for transcription.")
+            Text("FreeFlow works with Groq by default and can also use LiteLLM or another OpenAI-compatible endpoint.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
-                SecureField("Enter your Groq API key", text: $apiKeyInput)
+                SecureField("Enter your API key", text: $apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
                     .disabled(isValidatingKey)
@@ -453,7 +463,7 @@ struct GeneralSettingsView: View {
             Text("API Base URL")
                 .font(.caption.weight(.semibold))
 
-            Text("Change this to use a different OpenAI-compatible API provider.")
+            Text("Change this to use LiteLLM, Ollama, or another OpenAI-compatible API provider.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -472,6 +482,92 @@ struct GeneralSettingsView: View {
                 }
                 .font(.caption)
             }
+
+            Divider()
+
+            Text("Model Configuration")
+                .font(.caption.weight(.semibold))
+
+            Text("Use the model names exposed by your provider. This is especially useful when routing requests through LiteLLM.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            providerModelField(
+                title: "Transcription Model",
+                text: $transcriptionModelInput,
+                placeholder: AppState.defaultTranscriptionModel
+            ) { value in
+                appState.transcriptionModel = value
+            }
+            providerModelField(
+                title: "Post-Processing Model",
+                text: $postProcessingModelInput,
+                placeholder: AppState.defaultPostProcessingModel
+            ) { value in
+                appState.postProcessingModel = value
+            }
+            providerModelField(
+                title: "Fallback Post-Processing Model",
+                text: $fallbackPostProcessingModelInput,
+                placeholder: AppState.defaultFallbackPostProcessingModel
+            ) { value in
+                appState.fallbackPostProcessingModel = value
+            }
+            providerModelField(
+                title: "Context Text Model",
+                text: $contextTextModelInput,
+                placeholder: AppState.defaultContextTextModel
+            ) { value in
+                appState.contextTextModel = value
+            }
+            providerModelField(
+                title: "Context Vision Model",
+                text: $contextVisionModelInput,
+                placeholder: AppState.defaultContextVisionModel
+            ) { value in
+                appState.contextVisionModel = value
+            }
+
+            HStack {
+                Spacer()
+                Button("Reset Model Defaults") {
+                    transcriptionModelInput = AppState.defaultTranscriptionModel
+                    postProcessingModelInput = AppState.defaultPostProcessingModel
+                    fallbackPostProcessingModelInput = AppState.defaultFallbackPostProcessingModel
+                    contextTextModelInput = AppState.defaultContextTextModel
+                    contextVisionModelInput = AppState.defaultContextVisionModel
+                    appState.transcriptionModel = AppState.defaultTranscriptionModel
+                    appState.postProcessingModel = AppState.defaultPostProcessingModel
+                    appState.fallbackPostProcessingModel = AppState.defaultFallbackPostProcessingModel
+                    appState.contextTextModel = AppState.defaultContextTextModel
+                    appState.contextVisionModel = AppState.defaultContextVisionModel
+                }
+                .font(.caption)
+            }
+        }
+    }
+
+    private func providerModelField(
+        title: String,
+        text: Binding<String>,
+        placeholder: String,
+        onChange: @escaping (String) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+            TextField(
+                placeholder,
+                text: Binding(
+                    get: { text.wrappedValue },
+                    set: { newValue in
+                        text.wrappedValue = newValue
+                        onChange(newValue.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                )
+            )
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
         }
     }
 
@@ -490,7 +586,7 @@ struct GeneralSettingsView: View {
                     appState.apiKey = key
                     keyValidationSuccess = true
                 } else {
-                    keyValidationError = "Invalid API key. Please check the key and try again."
+                    keyValidationError = "Invalid API key or unreachable provider. Please check and try again."
                 }
             }
         }
@@ -1075,7 +1171,12 @@ struct PromptsSettingsView: View {
         systemTestError = nil
         systemTestPrompt = nil
 
-        let service = PostProcessingService(apiKey: appState.apiKey, baseURL: appState.apiBaseURL)
+        let service = PostProcessingService(
+            apiKey: appState.apiKey,
+            baseURL: appState.apiBaseURL,
+            defaultModel: appState.postProcessingModel,
+            fallbackModel: appState.fallbackPostProcessingModel
+        )
         let input = systemTestInput
         let customPrompt = appState.customSystemPrompt
         let vocabulary = appState.customVocabulary
@@ -1291,7 +1392,9 @@ struct PromptsSettingsView: View {
         let service = AppContextService(
             apiKey: appState.apiKey,
             baseURL: appState.apiBaseURL,
-            customContextPrompt: appState.customContextPrompt
+            customContextPrompt: appState.customContextPrompt,
+            textModel: appState.contextTextModel,
+            visionModel: appState.contextVisionModel
         )
 
         Task {
@@ -1548,7 +1651,7 @@ struct RunLogEntryView: View {
                             title: "Transcribe Audio",
                             content: {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Sent audio to Groq whisper-large-v3")
+                                    Text("Sent audio to the configured transcription endpoint")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .textSelection(.enabled)
